@@ -22,6 +22,7 @@ import android.content.Context;
 import android.content.res.Resources;
 import android.os.Build;
 import android.os.Handler;
+import android.os.Looper;
 import android.os.Message;
 import android.view.View;
 import android.view.ViewGroup;
@@ -217,7 +218,18 @@ final class Manager extends Handler {
         handleTranslucentActionBar((ViewGroup.MarginLayoutParams) params, activity);
         handleActionBarOverlay((ViewGroup.MarginLayoutParams) params, activity);
 
-        activity.addContentView(croutonView, params);
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+        	activity.addContentView(croutonView, params);
+        }else {
+        	final Activity mActivity = activity;
+        	final ViewGroup.LayoutParams mParams = params;
+        	activity.runOnUiThread(new Runnable() {
+      			@Override
+      			public void run() {
+      				mActivity.addContentView(croutonView, mParams);
+      			}
+      		});
+        }
       }
     }
 
@@ -295,25 +307,54 @@ final class Manager extends Handler {
     ViewGroup croutonParentView = (ViewGroup) croutonView.getParent();
 
     if (null != croutonParentView) {
-      croutonView.startAnimation(crouton.getOutAnimation());
+  	   if (Looper.myLooper() == Looper.getMainLooper()) {
 
-      // Remove the Crouton from the queue.
-      Crouton removed = croutonQueue.poll();
+  	    croutonView.startAnimation(crouton.getOutAnimation());
+        // Remove the Crouton from the queue.
+        Crouton removed = croutonQueue.poll();
 
-      // Remove the crouton from the view's parent.
-      croutonParentView.removeView(croutonView);
-      if (null != removed) {
-        removed.detachActivity();
-        removed.detachViewGroup();
-        if (null != removed.getLifecycleCallback()) {
-          removed.getLifecycleCallback().onRemoved();
+        // Remove the crouton from the view's parent.
+        croutonParentView.removeView(croutonView);
+        if (null != removed) {
+          removed.detachActivity();
+          removed.detachViewGroup();
+          if (null != removed.getLifecycleCallback()) {
+            removed.getLifecycleCallback().onRemoved();
+          }
+          removed.detachLifecycleCallback();
         }
-        removed.detachLifecycleCallback();
-      }
 
-      // Send a message to display the next crouton but delay it by the out
-      // animation duration to make sure it finishes
-      sendMessageDelayed(crouton, Messages.DISPLAY_CROUTON, crouton.getOutAnimation().getDuration());
+        // Send a message to display the next crouton but delay it by the out
+        // animation duration to make sure it finishes
+        sendMessageDelayed(crouton, Messages.DISPLAY_CROUTON, crouton.getOutAnimation().getDuration());
+      }else {
+      	final View mCroutonView = croutonView;
+      	final ViewGroup mCroutonParentView = croutonParentView;
+      	final Crouton mCrouton = crouton;
+      	crouton.getActivity().runOnUiThread(new Runnable() {
+      		@Override
+      		public void run() {
+      			mCroutonView.startAnimation(mCrouton.getOutAnimation());
+      			// Remove the Crouton from the queue.
+  		      Crouton removed = croutonQueue.poll();
+
+  		      // Remove the crouton from the view's parent.
+  		      mCroutonParentView.removeView(mCroutonView);
+  		      if (null != removed) {
+  		        removed.detachActivity();
+  		        removed.detachViewGroup();
+  		        if (null != removed.getLifecycleCallback()) {
+  		          removed.getLifecycleCallback().onRemoved();
+  		        }
+  		        removed.detachLifecycleCallback();
+  		      }
+
+  		      // Send a message to display the next crouton but delay it by the out
+  		      // animation duration to make sure it finishes
+  		      sendMessageDelayed(mCrouton, Messages.DISPLAY_CROUTON, mCrouton.getOutAnimation().getDuration());
+      		}
+      	});
+      }
     }
   }
 
